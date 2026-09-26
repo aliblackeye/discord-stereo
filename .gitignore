@@ -9,3 +9,6 @@ obj/
 backup/
 *.orig
 *.tmp
+
+# Build-specific checksums (releases carry their own)
+SHA256SUMS.txt
