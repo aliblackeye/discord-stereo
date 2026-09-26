@@ -1,0 +1,11 @@
+# Derleme çıktıları
+DiscordStereo.exe
+*.exe
+*.pdb
+bin/
+obj/
+
+# Yedekler ve geçici dosyalar
+backup/
+*.orig
+*.tmp
