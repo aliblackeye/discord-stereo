@@ -3,6 +3,14 @@
 All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.2.0]
+
+### Added
+- **Processing diagnostic in `--verify` / menu "Verify".** It now reads Discord's own logs and reports each capture processing stage — high-pass (bass), echo cancel, noise suppression, AGC1 and AGC2 — so you can see exactly what is still coloring the audio. High-pass is reported from the actual patch state (its config flag stays 1 even when the patched function is neutralized). Join a voice channel first for a fresh reading.
+
+### Notes
+- For music, all processing should be off. AGC2 (adaptive digital gain) is currently left on by Discord and is not yet disabled by this tool — it can make reverb tails louder and the main signal quieter. Tracked as a known limitation.
+
 ## [1.1.0]
 
 ### Added

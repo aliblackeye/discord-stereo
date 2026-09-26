@@ -516,6 +516,38 @@ const discordStereo = (() => {
             Console.WriteLine("  " + T("Opus channels    : ", "Opus kanal       : ") + nc + (nc == "2" ? "  OK" : ""));
             Console.WriteLine("  " + T("Opus stereo flag : ", "Opus stereo      : ") + st + (st == "1" ? "  OK" : ""));
             Console.WriteLine("  " + T("Captured channels: ", "Yakalanan kanal  : ") + ch + (ch == "2" ? "  OK" : ""));
+
+            // Ses isleme durumlari (APM ApplyConfig): muzik icin hepsi kapali (0) olmali.
+            var apm = Regex.Matches(text, @"AudioProcessing::ApplyConfig:.*").Cast<Match>().LastOrDefault();
+            if (apm != null)
+            {
+                string a = apm.Value;
+                Func<string, string> g = pat => { var m = Regex.Match(a, pat); return m.Success ? m.Groups[1].Value : "?"; };
+                // high-pass config bayragi Discord tarafindan hep 1 birakilir; asil is native yama fonksiyonu etkisizlestirir.
+                bool hpPatched = false;
+                try
+                {
+                    byte[] nd = File.ReadAllBytes(i.NodePath);
+                    var hpp = NativePatches.FirstOrDefault(p => p.Name.StartsWith("High-pass"));
+                    if (hpp != null) { int at; hpPatched = ResolveNative(nd, hpp, out at) == SiteState.Patched; }
+                }
+                catch { }
+                string ec = g(@"echo_canceller:\s*\{\s*enabled:\s*(\d)");
+                string ns = g(@"noise_suppression:\s*\{\s*enabled:\s*(\d)");
+                string g1 = g(@"gain_controller1:\s*\{\s*enabled:\s*(\d)");
+                string g2 = g(@"gain_controller2:\s*\{\s*enabled:\s*(\d)");
+                Action<string, string> row = (label, v) => Console.WriteLine("  " + label + v + (v == "0" ? "  OK" : v == "?" ? "" : T("  <- ON (colors music)", "  <- ACIK (muzigi bozar)")));
+                Console.WriteLine();
+                Console.WriteLine("  " + T("--- Processing (should all be OFF for music) ---", "--- Isleme (muzik icin hepsi KAPALI olmali) ---"));
+                Console.WriteLine("  " + T("High-pass (bass cut) : ", "High-pass (bass)     : ") + (hpPatched ? T("off (patched)  OK", "kapali (yamali)  OK") : T("ON  <- re-apply patch", "ACIK  <- yamayi tekrar uygula")));
+                row(T("Echo cancel          : ", "Echo giderme         : "), ec);
+                row(T("Noise suppression    : ", "Gurultu bastirma     : "), ns);
+                row(T("Auto gain (AGC1)     : ", "Oto kazanc (AGC1)    : "), g1);
+                row(T("Adaptive gain (AGC2) : ", "Adaptif kazanc(AGC2) : "), g2);
+            }
+            else
+                Console.WriteLine("  " + T("(Processing states: rejoin voice for a fresh reading)", "(Isleme durumlari: taze okuma icin ses kanalina tekrar gir)"));
+
             Console.WriteLine("  " + T("Discord running  : ", "Discord ayakta   : ") + (alive ? T("yes", "evet") : T("no", "hayır")));
             Console.WriteLine();
             if (st == "1" && ch == "2")
