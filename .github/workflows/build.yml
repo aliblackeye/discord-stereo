@@ -1,0 +1,54 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compile (csc, .NET Framework)
+        shell: pwsh
+        run: |
+          $csc = "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
+          & $csc /nologo /optimize+ /target:exe /platform:x64 /out:DiscordStereo.exe src\Program.cs
+          if ($LASTEXITCODE -ne 0) { throw "compile failed" }
+
+      - name: Sanity check
+        shell: pwsh
+        run: |
+          .\DiscordStereo.exe --help --lang en
+          # Gomulu JS kancasi gecerli JavaScript mi?
+          .\DiscordStereo.exe --dump-js --bitrate 510000 > hook.js
+          node --check hook.js
+          Remove-Item hook.js
+
+      - name: SHA-256
+        shell: pwsh
+        run: |
+          "$((Get-FileHash DiscordStereo.exe -Algorithm SHA256).Hash)  DiscordStereo.exe" | Out-File -Encoding ascii SHA256SUMS.txt
+          Get-Content SHA256SUMS.txt
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DiscordStereo
+          path: |
+            DiscordStereo.exe
+            SHA256SUMS.txt
+
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload ${{ github.ref_name }} DiscordStereo.exe SHA256SUMS.txt --clobber

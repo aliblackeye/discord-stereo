@@ -1,81 +1,121 @@
 # Discord Stereo
 
-Discord'a **gerçek stereo** ses ve **yüksek bitrate** (Discord'un ses codec'i olan Opus'un desteklediği en yüksek değer, 510 kbps'e kadar) göndermenizi sağlar — düşük gecikmeyle. Beraber müzik dinlerken, enstrüman çalarken veya stereo bir kaynağı paylaşırken sesin karşı tarafa **mono değil, sol/sağ ayrı** gitmesini ister misiniz? Bu araç onu yapar; **Go Live / ekran paylaşımı gerektirmez**, doğrudan mikrofon kanalından gider.
+**🇬🇧 English** · [🇹🇷 Türkçe](README.tr.md)
 
-Discord, mikrofon yolundaki sesi kalite/bant genişliği için tek kanala (mono) indirir. Bu araç, Discord'un ses modülüne (`discord_voice`) küçük, **imza tabanlı** yamalar uygulayarak bu indirmeyi durdurur ve kodlayıcıyı 2 kanala + yüksek bitrate'e alır. İmza tabanlı olduğu için **Discord sürümünden bağımsızdır**.
+Send **true stereo** audio to Discord at a **high bitrate** (up to 510 kbps, the maximum the Opus audio codec supports) with low latency — straight through the **microphone channel**, no Go Live / screen share needed. Perfect for listening to music together, playing an instrument, or sharing any stereo source so the other side hears **left/right separately instead of mono**.
 
-> **English:** Sends **true stereo** audio to Discord at a **high bitrate** (up to 510 kbps, the maximum the Opus audio codec supports) with low latency, straight through the microphone channel — no Go Live / screen share needed. It applies small, **signature-based** patches to Discord's `discord_voice` module, so it is **version-independent**. See usage below.
+Discord downmixes the microphone path to a single channel (mono) to save bandwidth. This tool applies small, **signature-based** patches to Discord's `discord_voice` module that stop the downmix and set the encoder to 2 channels at a high bitrate. Because the patches are signature-based, the tool is **version-independent**.
 
----
+> ⚠️ This tool modifies **your own Discord client on your own computer**. Client modifications may violate Discord's Terms of Service; use at your own risk. Everything runs locally — no data is sent anywhere.
 
-## Kurulum ve kullanım
+## Install & use
 
-1. `DiscordStereo.exe`'yi indir (veya `build.cmd` ile derle — aşağıya bak).
-2. Çift tıkla. Basit bir menü açılır:
-   - **1) Kur ve Discord'u başlat** — yamaları uygular ve Discord'u açar.
-   - **2) Kaldır** — her şeyi orijinaline döndürür.
-   - **3) Otomatik başlatma** — her açılışta otomatik uygulanmasını açar/kapatır.
-3. Discord açılınca ses kanalına gir ve stereo sesi çal. Karşı taraf **kulaklıkla** dinlerse sol/sağ ayrımını duyar.
+1. Download **DiscordStereo.exe** from the [latest release](../../releases/latest).
+2. Double-click it. A simple menu appears:
+   - **1) Install and start Discord** — applies the patch and launches Discord.
+   - **2) Uninstall** — restores everything to original.
+   - **3) Auto-start** — apply automatically at every Windows login.
+   - **4) Language** — English / Türkçe.
+3. When Discord opens, join a voice channel and play your stereo source. The other person should listen **with headphones** to hear the left/right separation.
 
-**Not:** Discord **yönetici olarak** çalışıyorsa araç onu kapatamaz. O durumda önce sistem tepsisinden sağ tık → *Quit Discord* yapıp tekrar dene.
+> If Windows SmartScreen warns you (unsigned app): **More info → Run anyway**. See [verifying the download](#verifying-the-download) to check the file hash.
+>
+> If Discord is running **as administrator**, the tool cannot close it — right-click the tray icon → *Quit Discord*, then try again.
 
-### Komut satırı (isteğe bağlı)
+### Command line (optional)
 
 ```
-DiscordStereo.exe --apply        # yamala ve başlat
-DiscordStereo.exe --restore      # orijinale döndür
-DiscordStereo.exe --status       # durumu göster
-DiscordStereo.exe --install      # her açılışta otomatik çalıştır
-DiscordStereo.exe --uninstall    # otomatik çalıştırmayı kaldır
-DiscordStereo.exe --bitrate 384000   # bitrate'i ayarla (8000–510000, varsayılan 510000)
+DiscordStereo.exe --apply         # patch and launch
+DiscordStereo.exe --restore       # restore original
+DiscordStereo.exe --status        # show status
+DiscordStereo.exe --install       # run automatically at every login
+DiscordStereo.exe --uninstall     # remove auto-start
+DiscordStereo.exe --bitrate 384000    # set bitrate (8000–510000, default 510000)
+DiscordStereo.exe --lang en|tr        # force language
 ```
 
-## En iyi ses için Discord ayarları
+Your language and bitrate choices are remembered in `%LOCALAPPDATA%\DiscordStereo\settings.txt`.
 
-Yamalar işlemeyi zaten kapatır, ama garanti olsun diye Discord → **Ses ve Görüntü**:
+## Best-quality Discord settings
 
-- **Gürültü Bastırma (Krisp): Kapalı**
-- **Yankı Giderme: Kapalı**
-- **Otomatik Kazanç Kontrolü: Kapalı**
-- **Gelişmiş Ses Etkinliği / Sinyal İşleme: Kapalı**
+The patch already disables in-app processing, but for good measure, in Discord → **Voice & Video**:
 
-Kulaklık kullan (hoparlörde yankı olabilir, çünkü yankı gideren kapalı).
+- **Noise Suppression (Krisp): Off**
+- **Echo Cancellation: Off**
+- **Automatic Gain Control: Off**
+- **Advanced voice activity / audio signal processing: Off**
 
-## Nasıl çalışır
+Use headphones (with echo cancellation off, speakers may cause echo for others).
 
-İki katman birlikte çalışır:
+## How it works
 
-1. **JS kancası** (`index.js`): ses bağlantısının kodlayıcısını 2 kanala, bitrate'i seçilen değere alır ve mono'ya iten işlemeyi (gürültü/yankı/AGC) kapatır. Böylece mikrofon 2 kanal **yakalanır**.
-2. **Native yamalar** (`discord_voice.node`, imza tabanlı, 3 nokta):
-   - *Stereo*: gönderim akışında kanal sayısı 1 → 2.
-   - *Downmix bypass*: yakalanan 2 kanalı mono'ya indiren dalı atlar (asıl düzeltme).
-   - *High-pass off*: müzikte alçak frekansları kesen filtreyi kapatır.
+Two layers work together:
 
-Tüm değişiklikler **yedeklenir** (`%LOCALAPPDATA%\DiscordStereo\backup\`), dosya adında orijinal SHA-256 ile; *Kaldır* birebir geri yükler. İmzalar dosyada tam bir kez eşleşmezse hiçbir şey yazılmaz (yanlış sürüme dokunmaz).
+1. **JS hook** (`index.js`): sets the voice encoder to 2 channels and the chosen bitrate, and turns off the processing (noise/echo/AGC) that collapses stereo — so the mic is **captured** as 2 channels.
+2. **Native patches** (`discord_voice.node`, signature-based, 3 sites):
+   - *Stereo*: channel count 1 → 2 in the send stream.
+   - *Downmix bypass*: skips the branch that downmixes the captured 2 channels to mono (the actual fix).
+   - *High-pass off*: disables the low-cut filter that hurts music.
 
-## Derleme
+Every change is **backed up** to `%LOCALAPPDATA%\DiscordStereo\backup\` with the original SHA-256 in the filename; *Uninstall* restores byte-for-byte. If a signature does not match exactly once, nothing is written (it never touches the wrong version).
 
-.NET Framework 4.x ile gelen C# derleyicisini kullanır, harici bağımlılık yoktur:
+## Troubleshooting / FAQ
+
+**The other person still hears mono.**
+- Make sure they listen with **headphones** — speakers blur left/right.
+- Your source must actually be stereo with distinct L/R (test with a track that has clear panning).
+- Re-check `--status` shows **STEREO ACTIVE**. If Discord updated, re-run the tool.
+
+**It worked, then stopped after I restarted Discord.**
+- Launch Discord **through this tool** (menu → *Install and start*) or enable **auto-start**. Discord can revert the on-disk JS hook on some manual relaunches; the tool re-applies it.
+
+**Bitrate seems capped / quality lower than 510 kbps.**
+- Discord enforces a **server-side maximum bitrate per voice channel**. Non-boosted servers cap lower (often 64–96 kbps); boosted servers allow more. The tool requests high bitrate client-side, but the server may still cap it. This is a Discord limit, not a bug.
+
+**"Could not close Discord."**
+- Discord is running as administrator. Quit it from the tray (*Quit Discord*) and retry, or run this tool as administrator too.
+
+**Antivirus / SmartScreen flags the exe.**
+- The binary is unsigned and patches another app's files, which commonly triggers heuristics. Build it yourself from source (below), or verify the published hash.
+
+**Does it work on PTB / Canary?**
+- The tool detects Stable, PTB, Canary and Development, newest first. It is primarily tested on Stable.
+
+## Verifying the download
+
+Each release lists the SHA-256 of `DiscordStereo.exe` (see `SHA256SUMS.txt` on the release). To check:
+
+```powershell
+Get-FileHash .\DiscordStereo.exe -Algorithm SHA256
+```
+
+Compare it with the value on the release page.
+
+## Build from source
+
+Uses the C# compiler that ships with .NET Framework 4.x — no external dependencies:
 
 ```
 build.cmd
 ```
 
-`DiscordStereo.exe` üretilir. (Alternatif: `csc.exe ... src\Program.cs`.)
+Or with the .NET SDK:
 
-## Kalıcılık ve güncellemeler
+```
+dotnet build -c Release
+```
 
-- Discord kendini güncellediğinde modül dosyaları yenilenir ve yamalar gider. **Otomatik başlatma** açıksa, bir sonraki açılışta araç güncel sürümü tespit edip yeniden uygular.
-- Discord'u tamamen kapatıp normal kısayoldan açarsan JS kancası bazen Discord tarafından geri alınabilir; en garantisi Discord'u **bu araçla** (menü → Kur ve başlat, ya da otomatik başlatma) açmandır.
+This produces `DiscordStereo.exe`.
 
-## Uyarı / sorumluluk reddi
+## Persistence & Discord updates
 
-Bu araç **yalnızca kendi bilgisayarındaki kendi Discord istemcini** değiştirir. İstemci değişiklikleri Discord'un Hizmet Şartlarına aykırı olabilir; kullanım **tamamen kendi sorumluluğundadır**. Yazar hiçbir sorumluluk kabul etmez. Yamalar yereldir; hiçbir veri hiçbir yere gönderilmez.
+- When Discord updates itself, the module files are replaced and the patch is gone. With **auto-start** enabled, the tool detects the new version and re-applies on the next login.
+- For the most reliable result, open Discord **through this tool** (or via auto-start) rather than the normal shortcut.
 
-## Teşekkür
+## Credits
 
-Topluluğun stereo çalışmalarından esinlenilmiştir (edoStereo; DiscordVoicePatcher / Vencord voicePatcher). Bu proje bağımsız, tek dosyalık, sürümden bağımsız bir uygulamadır.
+Inspired by the community's stereo work (edoStereo; DiscordVoicePatcher / Vencord voicePatcher). This is an independent, single-file, version-independent implementation.
 
-## Lisans
+## License
 
-MIT — bkz. [LICENSE](LICENSE).
+MIT — see [LICENSE](LICENSE).
