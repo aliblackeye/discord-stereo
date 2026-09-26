@@ -501,10 +501,45 @@ const discordStereo = (() => {
         {
             string logDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), i.ProcName.ToLowerInvariant(), "logs");
             if (!Directory.Exists(logDir)) { Console.WriteLine(T("No voice logs yet. Join a voice channel and play audio, then run verify again.", "Henüz ses logu yok. Bir ses kanalına girip ses çal, sonra tekrar doğrula.")); return; }
-            var parts = new[] { "discord-webrtc_1", "discord-webrtc_0" }
-                .Select(n => Path.Combine(logDir, n)).Where(File.Exists).ToList();
-            string text = string.Concat(parts.Select(ReadShared));
-            if (text.Length == 0) { Console.WriteLine(T("No voice session found. Join a voice channel and play audio first.", "Ses oturumu bulunamadı. Önce bir ses kanalına girip ses çal.")); return; }
+            // The webrtc logs persist across sessions and Discord keeps two of them
+            // (discord-webrtc_0 / _1). Concatenating both and taking the last match can pick a
+            // value from the OLD file. Order the files so the freshest content comes last, and
+            // gate on the periodic capture line so stale sessions are not read as current.
+            Func<string, DateTime> newestTs = s =>
+            {
+                DateTime best = DateTime.MinValue;
+                foreach (Match tm in Regex.Matches(s, @"\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})"))
+                {
+                    DateTime ts;
+                    if (DateTime.TryParseExact(tm.Groups[1].Value, "yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture, DateTimeStyles.None, out ts) && ts > best)
+                        best = ts;
+                }
+                return best;
+            };
+            var parts = new[] { "discord-webrtc_0", "discord-webrtc_1" }
+                .Select(n => Path.Combine(logDir, n)).Where(File.Exists)
+                .Select(p => ReadShared(p)).Where(t => t.Length > 0)
+                .OrderBy(newestTs)               // freshest file last => LastOrDefault picks current data
+                .ToList();
+            if (parts.Count == 0) { Console.WriteLine(T("No voice session found. Join a voice channel and play audio first.", "Ses oturumu bulunamadı. Önce bir ses kanalına girip ses çal.")); return; }
+            string text = string.Concat(parts);
+
+            // Freshness proxy: captured_audio_processor logs every ~10 s while the mic is live.
+            DateTime voiceTs = DateTime.MinValue;
+            foreach (Match m in Regex.Matches(text, @"\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})[^\n]*?captured_audio_processor"))
+            {
+                DateTime ts;
+                if (DateTime.TryParseExact(m.Groups[1].Value, "yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture, DateTimeStyles.None, out ts) && ts > voiceTs)
+                    voiceTs = ts;
+            }
+            if (voiceTs == DateTime.MinValue || (DateTime.Now - voiceTs) > TimeSpan.FromMinutes(5))
+            {
+                string when = voiceTs == DateTime.MinValue ? T("none found", "bulunamadı") : voiceTs.ToString("yyyy-MM-dd HH:mm");
+                Console.WriteLine("  " + T("No live voice capture in the logs (last: ", "Loglarda canlı ses yakalama yok (son: ") + when + ").");
+                Console.WriteLine("  " + T("Join a voice channel, play ~10 s of audio, then run verify again.",
+                                            "Bir ses kanalına gir, ~10 sn ses çal, sonra doğrulamayı tekrar çalıştır."));
+                return;
+            }
 
             var cfg = Regex.Matches(text, @"ConfigureStream.*?format:\s*\{name:\s*opus[^}]*num_channels:\s*(\d)[^}]*stereo:\s*(\d)").Cast<Match>().LastOrDefault();
             var cap = Regex.Matches(text, @"captured_audio_processor\.cpp:\d+\).*?channels:\s*(\d)").Cast<Match>().LastOrDefault();

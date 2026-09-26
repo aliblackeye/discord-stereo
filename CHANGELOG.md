@@ -3,13 +3,18 @@
 All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+### Fixed
+- **`--verify` no longer reports stale readings.** The WebRTC logs persist across sessions, so verify could show channel/processing values from an old voice session as if they were current. It now checks the log's most recent timestamp and, if there was no voice activity in the last 5 minutes, asks you to rejoin voice instead of printing outdated numbers.
+
+### Changed
+- Corrected the note about AGC2. Controlled testing does not support the earlier claim that AGC2 was responsible for the altered dynamics on music; on/off made no audible difference, and the received phase problem reproduces independently of it. See the investigation in the issue tracker.
+
 ## [1.2.0]
 
 ### Added
-- **Processing diagnostic in `--verify` / menu "Verify".** It now reads Discord's own logs and reports each capture processing stage — high-pass (bass), echo cancel, noise suppression, AGC1 and AGC2 — so you can see exactly what is still coloring the audio. High-pass is reported from the actual patch state (its config flag stays 1 even when the patched function is neutralized). Join a voice channel first for a fresh reading.
-
-### Notes
-- For music, all processing should be off. AGC2 (adaptive digital gain) is currently left on by Discord and is not yet disabled by this tool — it can make reverb tails louder and the main signal quieter. Tracked as a known limitation.
+- **Processing diagnostic in `--verify` / menu "Verify".** It now reads Discord's own logs and reports each capture processing stage — high-pass (bass), echo cancel, noise suppression, AGC1 and AGC2 — so you can see what the capture pipeline is configured to do. High-pass is reported from the actual patch state (its config flag stays 1 even when the patched function is neutralized). Join a voice channel first for a fresh reading.
 
 ## [1.1.0]
 
