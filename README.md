@@ -1,10 +1,10 @@
 # Discord Stereo
 
-Discord'a **gerçek stereo** ses ve **yüksek bitrate** (Opus tavanı 510 kbps) göndermenizi sağlar — düşük gecikmeyle. Beraber müzik dinlerken, enstrüman çalarken veya stereo bir kaynağı paylaşırken sesin karşı tarafa **mono değil, sol/sağ ayrı** gitmesini ister misiniz? Bu araç onu yapar; **Go Live / ekran paylaşımı gerektirmez**, doğrudan mikrofon kanalından gider.
+Discord'a **gerçek stereo** ses ve **yüksek bitrate** (Discord'un ses codec'i olan Opus'un desteklediği en yüksek değer, 510 kbps'e kadar) göndermenizi sağlar — düşük gecikmeyle. Beraber müzik dinlerken, enstrüman çalarken veya stereo bir kaynağı paylaşırken sesin karşı tarafa **mono değil, sol/sağ ayrı** gitmesini ister misiniz? Bu araç onu yapar; **Go Live / ekran paylaşımı gerektirmez**, doğrudan mikrofon kanalından gider.
 
 Discord, mikrofon yolundaki sesi kalite/bant genişliği için tek kanala (mono) indirir. Bu araç, Discord'un ses modülüne (`discord_voice`) küçük, **imza tabanlı** yamalar uygulayarak bu indirmeyi durdurur ve kodlayıcıyı 2 kanala + yüksek bitrate'e alır. İmza tabanlı olduğu için **Discord sürümünden bağımsızdır**.
 
-> **English:** Sends **true stereo** audio to Discord at a **high bitrate** (up to Opus max 510 kbps) with low latency, straight through the microphone channel — no Go Live / screen share needed. It applies small, **signature-based** patches to Discord's `discord_voice` module, so it is **version-independent**. See usage below.
+> **English:** Sends **true stereo** audio to Discord at a **high bitrate** (up to 510 kbps, the maximum the Opus audio codec supports) with low latency, straight through the microphone channel — no Go Live / screen share needed. It applies small, **signature-based** patches to Discord's `discord_voice` module, so it is **version-independent**. See usage below.
 
 ---
 

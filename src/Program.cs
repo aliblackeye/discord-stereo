@@ -17,7 +17,7 @@ namespace DiscordStereo
     internal static class Program
     {
         const int PatchVersion = 1;
-        const int DefaultBitrate = 510000; // Opus tavanı (en yüksek kalite)
+        const int DefaultBitrate = 510000; // Opus ses codec'inin desteklediği en yüksek bitrate (en yüksek kalite)
         const string Marker = "DISCORD-STEREO-PATCH";
 
         // -------- Native (discord_voice.node) imza tabanlı yamalar --------
