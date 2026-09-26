@@ -112,6 +112,14 @@ dotnet build -c Release
 - Discord kendini güncellediğinde modül dosyaları yenilenir ve yama gider. **Otomatik başlatma** açıksa, araç yeni sürümü tespit edip bir sonraki açılışta yeniden uygular.
 - En garantisi Discord'u normal kısayoldan değil, **bu araçla** (ya da otomatik başlatma ile) açmandır.
 
+## Neden bu araç
+
+- **Güncel Discord'da çalışır ve çalışmaya devam eder.** Yama noktaları **çalışma anında imzayla** bulunur; Discord güncellemesi çoğu zaman çalışmayı sürdürür — sürüm-başına sabit offset yok, yeni bir sürüm/binary dump beklemek yok.
+- **Güvenli ve küçük.** **Senin kendi orijinal dosyanı yerinde** yamalar, yedekle + birebir geri alınabilir. **Hiçbir** hazır/yamalı Discord binary'si dağıtmaz.
+- **Şeffaf.** Tek okunur kaynak dosya, CI ile derlenmiş ve SHA-256'sı yayınlanmış sürümler, ağ isteği yok, telemetri yok.
+
+Bazı eski stereo araçları sabit offset'e ya da sürüm-başına büyük hazır binary dağıtmaya dayanır — bu her güncellemede bozulur ve çoğu artık bakımsız. Bu araç çalışmaya devam etmeyi ve denetlenebilir olmayı hedefler. Cross-platform planları için [yol haritası](ROADMAP.md).
+
 ## Teşekkür
 
 Topluluğun stereo çalışmalarından esinlenilmiştir (edoStereo; DiscordVoicePatcher / Vencord voicePatcher). Bu proje bağımsız, tek dosyalık, sürümden bağımsız bir uygulamadır.

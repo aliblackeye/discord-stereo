@@ -112,6 +112,14 @@ This produces `DiscordStereo.exe`.
 - When Discord updates itself, the module files are replaced and the patch is gone. With **auto-start** enabled, the tool detects the new version and re-applies on the next login.
 - For the most reliable result, open Discord **through this tool** (or via auto-start) rather than the normal shortcut.
 
+## Why this tool
+
+- **Works on current Discord and keeps working.** Patch sites are resolved by **signature at runtime**, so a Discord update usually keeps working — no per-version hardcoded offsets, no waiting for a new build or a new binary dump.
+- **Safe and tiny.** It patches your **own original file in place**, with a backup and byte-for-byte restore. It ships **no** prebuilt or patched Discord binaries.
+- **Transparent.** One readable source file, CI-built releases with a published SHA-256, no network calls, no telemetry.
+
+Some older stereo tools rely on hardcoded offsets or on shipping large prebuilt binaries per Discord version — which breaks on updates, and several are no longer maintained. This one aims to keep working and to be easy to audit. See the [roadmap](ROADMAP.md) for cross-platform plans.
+
 ## Credits
 
 Inspired by the community's stereo work (edoStereo; DiscordVoicePatcher / Vencord voicePatcher). This is an independent, single-file, version-independent implementation.
