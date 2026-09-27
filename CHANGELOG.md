@@ -5,6 +5,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+- **Opus music mode (major, uncoloured centre).** The voice encoder now requests the Opus *audio* application instead of *voip*. VOIP is a speech path: on music it folds the stereo centre (vocals and bass) down while the wide/reverb content survives, so a centred mix arrives thin and distant. In music mode the full stereo image is coded. Native patch in `discord_voice.node`, at the same encoder-config builder as the stereo patch.
+- **No mid-call mono downgrade (keeps stereo steady).** Discord's audio network adaptor commits a single channel whenever its uplink estimate dips, and the codec then folds L/R to (L+R)/2 — audio that intermittently collapses toward mono during a call. The runtime channel downgrade is now skipped, so two channels are held for the whole call. Safer than pinning the value, which would fatal-assert if the encoder ever held fewer channels than requested.
+
 ### Fixed
 - **Stereo flag and bitrate are now enforced on every connection (major).** The hook only upgraded the encoder when it arrived as mono; when Discord already reported 2 channels (the native patch sets that), it left the connection alone — so the Opus `stereo` flag stayed 0 and the bitrate stayed at Discord's ~64 kbps default. Verified in the WebRTC logs: `ConfigureStream ... stereo=0` and `rate=64000`. The hook now forces `channels=2`, `stereo=1` and the chosen bitrate on every `setTransportOptions`, so the connection reliably reports `stereo=1` at the configured bitrate.
 - **`--verify` no longer reports stale readings.** The WebRTC logs persist across sessions, so verify could show channel/processing values from an old voice session as if they were current. It now checks the log's most recent timestamp and, if there was no voice activity in the last 5 minutes, asks you to rejoin voice instead of printing outdated numbers.

@@ -16,6 +16,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
+using System.Security.Principal;
 using System.Text;
 using System.Text.RegularExpressions;
 
@@ -59,6 +60,26 @@ namespace DiscordStereo
                 Name = "High-pass filter off",
                 Sig = new[]{0x48,0x8B,0x42,-1,0x45,0x84,0xC0,0x74,-1,0x48,0x85,0xC0,0x0F,0x84,-1,-1,-1,-1,0x45,0x31,0xF6,0x48,0x8D,0x5C,0x24,-1},
                 SigOffset = -30, Verify = new byte[]{0x41}, Write = new byte[]{0xC3},
+            },
+            // Opus application: VOIP -> AUDIO. In the encoder-config builder (same function as the
+            // stereo patch), the AudioEncoderOpusConfig has application(0) written as the low half
+            // of `movabs rax, (default_bitrate<<32)|application`. VOIP (SILK/hybrid) folds the
+            // stereo centre down on music; AUDIO keeps it. The high half (bitrate) is wildcarded.
+            new NativePatch {
+                Name = "Opus application AUDIO (music, not VOIP)",
+                Sig = new[]{0x48,0xC7,0x84,0x24,0xB0,0x00,0x00,0x00,0x01,0x00,0x00,0x00,0x48,0xB8,0x00,0x00,0x00,0x00,-1,-1,-1,-1},
+                SigOffset = 14, Verify = new byte[]{0x00}, Write = new byte[]{0x01},
+            },
+            // Network adaptor mono-drop: when the uplink estimate dips, the adaptor commits
+            // 1 channel (OPUS_SET_FORCE_CHANNELS,1) and libopus folds L/R to mono mid-call -
+            // the intermittent "comes and goes" defect. Turn the `jne` that skips the
+            // num-channels apply into an unconditional `jmp`, so the runtime never overrides
+            // the config's 2 channels. Safer than pinning the value, which fatal-asserts if
+            // the encoder ever holds fewer channels than requested.
+            new NativePatch {
+                Name = "Keep stereo (no mid-call mono drop)",
+                Sig = new[]{0x80,0x7C,0x24,0x78,0x01,0x75,0x29,0x48,0x8B,0x7C,0x24,0x70,0x48,0x39,0xBE,0xE0,0x00,0x00,0x00},
+                SigOffset = 5, Verify = new byte[]{0x75}, Write = new byte[]{0xEB},
             },
         };
 
@@ -385,6 +406,30 @@ const discordStereo = (() => {
             catch (Exception e) { Console.WriteLine(T("Could not start Discord: ", "Discord başlatılamadı: ") + e.Message); }
         }
 
+        // True once we are already running elevated after a self-relaunch, to avoid a UAC loop.
+        static bool ElevatedRetry;
+
+        static bool IsElevated()
+        {
+            try { using (var id = WindowsIdentity.GetCurrent()) return new WindowsPrincipal(id).IsInRole(WindowsBuiltInRole.Administrator); }
+            catch { return false; }
+        }
+
+        // Discord run as administrator can't be closed by a normal-rights process, so patching
+        // (which needs the .node unlocked) fails. Relaunch this tool elevated to finish the job.
+        static bool RelaunchElevated(int bitrate)
+        {
+            try
+            {
+                string exe = Process.GetCurrentProcess().MainModule.FileName;
+                string args = "--apply --elevated --bitrate " + bitrate + " --lang " + (lang == Lang.Tr ? "tr" : "en");
+                var psi = new ProcessStartInfo(exe, args) { UseShellExecute = true, Verb = "runas" };
+                Process.Start(psi);
+                return true;
+            }
+            catch { return false; } // user declined the UAC prompt, or elevation is unavailable
+        }
+
         // ================= Auto-start (HKCU Run) =================
         const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
         const string RunValue = "DiscordStereo";
@@ -449,11 +494,24 @@ const discordStereo = (() => {
         {
             if (!CloseDiscord(i, quiet))
             {
+                // Discord is likely running as administrator. Relaunch ourselves elevated so we
+                // can close it and patch the (otherwise locked) native module.
+                if (!IsElevated() && !ElevatedRetry)
+                {
+                    Console.WriteLine();
+                    Console.WriteLine(T("Discord is running as administrator; this tool needs the same rights to update it.",
+                                        "Discord yönetici olarak çalışıyor; aracın onu güncellemek için aynı yetki gerekiyor."));
+                    Console.WriteLine(T("Approve the Windows prompt to continue in an administrator window.",
+                                        "Devam etmek için Windows uyarısını onayla; işlem yönetici penceresinde sürecek."));
+                    if (RelaunchElevated(bitrate)) return true;
+                    Console.WriteLine();
+                    Console.WriteLine(T("Elevation was declined. Alternative: right-click the tray icon > \"Quit Discord\", then run apply again.",
+                                        "Yönetici izni verilmedi. Alternatif: tepsi simgesine sağ tık > \"Quit Discord\", sonra tekrar uygula."));
+                    return false;
+                }
                 Console.WriteLine();
-                Console.WriteLine(T("Could not close Discord (it is probably running as administrator).",
-                                    "Discord kapatılamadı (muhtemelen yönetici olarak çalışıyor)."));
-                Console.WriteLine(T("Right-click the tray icon > \"Quit Discord\", then try again.",
-                                    "Sistem tepsisinden sağ tık > \"Quit Discord\" ile kapat, sonra tekrar dene."));
+                Console.WriteLine(T("Could not close Discord even with administrator rights. Quit it from the tray and try again.",
+                                    "Discord yönetici hakkıyla bile kapatılamadı. Tepsiden \"Quit Discord\" ile kapatıp tekrar dene."));
                 return false;
             }
             try
@@ -724,6 +782,7 @@ const discordStereo = (() => {
         {
             try { Console.OutputEncoding = Encoding.UTF8; } catch { }
             var set = new HashSet<string>(args.Select(a => a.ToLowerInvariant()));
+            ElevatedRetry = set.Contains("--elevated");
 
             // Language: OS default -> saved setting -> --lang flag
             lang = CultureInfo.CurrentUICulture.TwoLetterISOLanguageName == "tr" ? Lang.Tr : Lang.En;
