@@ -61,10 +61,12 @@ namespace DiscordStereo
                 Sig = new[]{0x48,0x8B,0x42,-1,0x45,0x84,0xC0,0x74,-1,0x48,0x85,0xC0,0x0F,0x84,-1,-1,-1,-1,0x45,0x31,0xF6,0x48,0x8D,0x5C,0x24,-1},
                 SigOffset = -30, Verify = new byte[]{0x41}, Write = new byte[]{0xC3},
             },
-            // Opus application: VOIP -> AUDIO. In the encoder-config builder (same function as the
-            // stereo patch), the AudioEncoderOpusConfig has application(0) written as the low half
-            // of `movabs rax, (default_bitrate<<32)|application`. VOIP (SILK/hybrid) folds the
-            // stereo centre down on music; AUDIO keeps it. The high half (bitrate) is wildcarded.
+            // Opus application default: VOIP -> AUDIO. In the encoder-config builder (same function
+            // as the stereo patch), the AudioEncoderOpusConfig has application(0) written as the low
+            // half of `movabs rax, (default_bitrate<<32)|application`. AUDIO (music) codes the full
+            // stereo image where VOIP is speech-tuned. Defensive only: on this build a stereo stream
+            // already resolves to AUDIO downstream, so this just pins the default; it is not what
+            // fixes the thin centre (that is the packet-loss/FEC pair below). High half is wildcarded.
             new NativePatch {
                 Name = "Opus application AUDIO (music, not VOIP)",
                 Sig = new[]{0x48,0xC7,0x84,0x24,0xB0,0x00,0x00,0x00,0x01,0x00,0x00,0x00,0x48,0xB8,0x00,0x00,0x00,0x00,-1,-1,-1,-1},
@@ -80,6 +82,31 @@ namespace DiscordStereo
                 Name = "Keep stereo (no mid-call mono drop)",
                 Sig = new[]{0x80,0x7C,0x24,0x78,0x01,0x75,0x29,0x48,0x8B,0x7C,0x24,0x70,0x48,0x39,0xBE,0xE0,0x00,0x00,0x00},
                 SigOffset = 5, Verify = new byte[]{0x75}, Write = new byte[]{0xEB},
+            },
+            // Opus packet-loss percentage pinned to 0 (the real fix for the thin centre). Discord's
+            // stream negotiates a 30% minimum packet-loss assumption; libopus answers by coding very
+            // conservatively - wider CELT spreading and a mono-leaning allocation that collapses the
+            // stereo centre of music a fraction of a second in. `WebRtcOpus_SetPacketLossRate` passes
+            // the rate in r8d (`mov r8d, edx`); replace that with `xor r8d, r8d` so the rate is always
+            // 0 and the whole bitrate stays on the signal. Located by the OPUS_SET_PACKET_LOSS_PERC
+            // request (0x0FAE) that follows.
+            new NativePatch {
+                Name = "Opus packet-loss 0 (no conservative coding)",
+                Sig = new[]{0x41,0x89,0xD0,0x48,0x8B,0x01,0x48,0x85,0xC0,0x74,-1,0x48,0x89,0xC1,0xBA,0xAE,0x0F,0x00,0x00},
+                SigOffset = 0, Verify = new byte[]{0x41,0x89,0xD0}, Write = new byte[]{0x45,0x31,0xC0},
+            },
+            // Opus in-band FEC off. The stream negotiates useinbandfec=1; FEC spends part of the
+            // bitrate on error correction instead of audio. Both `WebRtcOpus_EnableFec` call sites
+            // load r8d=1 right after the OPUS_SET_INBAND_FEC request (0x0FAC); force 0.
+            new NativePatch {
+                Name = "Opus in-band FEC off (a)",
+                Sig = new[]{0x48,0x89,0xC1,0xBA,0xAC,0x0F,0x00,0x00,0x41,0xB8,0x01},
+                SigOffset = 10, Verify = new byte[]{0x01}, Write = new byte[]{0x00},
+            },
+            new NativePatch {
+                Name = "Opus in-band FEC off (b)",
+                Sig = new[]{0x48,0x8B,0x49,0x08,0xBA,0xAC,0x0F,0x00,0x00,0x41,0xB8,0x01},
+                SigOffset = 11, Verify = new byte[]{0x01}, Write = new byte[]{0x00},
             },
         };
 

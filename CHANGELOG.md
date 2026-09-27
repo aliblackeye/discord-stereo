@@ -3,19 +3,20 @@
 All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased]
-
-### Added
-- **Opus music mode (major, uncoloured centre).** The voice encoder now requests the Opus *audio* application instead of *voip*. VOIP is a speech path: on music it folds the stereo centre (vocals and bass) down while the wide/reverb content survives, so a centred mix arrives thin and distant. In music mode the full stereo image is coded. Native patch in `discord_voice.node`, at the same encoder-config builder as the stereo patch.
-- **No mid-call mono downgrade (keeps stereo steady).** Discord's audio network adaptor commits a single channel whenever its uplink estimate dips, and the codec then folds L/R to (L+R)/2 — audio that intermittently collapses toward mono during a call. The runtime channel downgrade is now skipped, so two channels are held for the whole call. Safer than pinning the value, which would fatal-assert if the encoder ever held fewer channels than requested.
+## [1.3.0] - 2026-09-27
 
 ### Fixed
-- **Stereo flag and bitrate are now enforced on every connection (major).** The hook only upgraded the encoder when it arrived as mono; when Discord already reported 2 channels (the native patch sets that), it left the connection alone — so the Opus `stereo` flag stayed 0 and the bitrate stayed at Discord's ~64 kbps default. Verified in the WebRTC logs: `ConfigureStream ... stereo=0` and `rate=64000`. The hook now forces `channels=2`, `stereo=1` and the chosen bitrate on every `setTransportOptions`, so the connection reliably reports `stereo=1` at the configured bitrate.
-- **`--verify` no longer reports stale readings.** The WebRTC logs persist across sessions, so verify could show channel/processing values from an old voice session as if they were current. It now checks the log's most recent timestamp and, if there was no voice activity in the last 5 minutes, asks you to rejoin voice instead of printing outdated numbers.
+- **The received centre no longer thins out — a stray packet-loss assumption was collapsing it (the headline fix).** On a stereo *music* mix the phantom centre (lead vocal, bass, kick) reached the far end weak and unstable a fraction of a second into the call, while the wide reverb tails came through fine — the received signal showed up strongly out of phase. Root cause: the Opus encoder was being driven as if the link had heavy packet loss. The live stream config carried a 30% minimum packet-loss figure with in-band FEC on, and libopus answers that by coding defensively — it widens the CELT stereo spread and spends part of the bitrate on redundancy instead of the signal, which is exactly what hollows out a centred image. The encoder now runs at 0% packet loss with FEC off, so the full bitrate goes to the signal and the centre stays put. Native patches in `discord_voice.node` set the packet-loss rate handed to libopus to 0 and force both FEC-enable sites off; the JS hook also clears the FEC flag on the transport options.
+- **Stereo flag and bitrate are now enforced on every connection.** The hook previously only upgraded the encoder when it arrived as mono; when Discord already reported 2 channels (the native patch sets that), the Opus `stereo` flag stayed 0 and the bitrate stayed at Discord's ~64 kbps default (`ConfigureStream ... stereo=0`, `rate=64000` in the WebRTC logs). It now forces `channels=2`, `stereo=1` and the chosen bitrate on every `setTransportOptions`.
+- **`--verify` no longer reports stale readings.** The WebRTC logs persist across sessions, so verify could show channel/processing values from an old voice session as if they were current. It now gates on the log's most recent timestamp and, if there was no voice activity in the last 5 minutes, asks you to rejoin voice instead of printing outdated numbers.
+
+### Added
+- **No mid-call mono downgrade (keeps stereo steady).** Discord's audio network adaptor commits a single channel whenever its uplink estimate dips, and the codec then folds L/R to (L+R)/2 — audio that intermittently collapses toward mono during a call. The runtime channel downgrade is now skipped, so two channels are held for the whole call. Safer than pinning the value, which would fatal-assert if the encoder ever held fewer channels than requested.
+- **Opus music application selected explicitly.** The encoder config requests the Opus *audio* application (music) rather than the speech-tuned *voip* path. On the current build a stereo stream already selects it, so this is belt-and-suspenders against a build or code path that would otherwise fall back to voip.
 
 ### Changed
 - **`--verify` reads the stream config from `discord-last-webrtc` and reports whether the APM is actually running.** Stream setup (`ConfigureStream` / `ApplyConfig`) is logged to `discord-last-webrtc`, not the live `discord-webrtc`, so verify now reads both; the verdict is based on the fresh captured channel count, and it shows the live `APM frames processed` count so configured-but-idle processing is not mistaken for active processing.
-- Corrected the note about AGC2. Controlled testing does not support the earlier claim that AGC2 was responsible for the altered dynamics on music; on/off made no audible difference, and the received phase problem reproduces independently of it. See the investigation in the issue tracker.
+- Corrected the note about AGC2. Controlled on/off testing showed no audible difference on music, and the received-phase problem reproduces independently of it, so AGC2 is not responsible for the altered dynamics claimed earlier.
 
 ## [1.2.0]
 
