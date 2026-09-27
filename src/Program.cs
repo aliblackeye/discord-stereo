@@ -23,7 +23,7 @@ namespace DiscordStereo
 {
     internal static class Program
     {
-        const int PatchVersion = 1;
+        const int PatchVersion = 2;
         const int DefaultBitrate = 510000; // highest bitrate the Opus audio codec supports (best quality)
         const string Marker = "DISCORD-STEREO-PATCH";
 
@@ -102,15 +102,19 @@ const discordStereo = (() => {
             const encoder = options.audioEncoder;
             if (encoder != null && typeof encoder === 'object') {
                 const wasMono = !(encoder.channels >= CHANNELS);
-                connections.set(instance, wasMono);
-                if (wasMono) {
-                    encoder.channels = CHANNELS;
-                    if (encoder.params != null && typeof encoder.params === 'object' && 'stereo' in encoder.params) encoder.params.stereo = '1';
-                    if (encoder.fec === true) encoder.fec = false;
-                    options.encodingVoiceBitRate = BITRATE;
-                    if (options.fec === true) options.fec = false;
-                    say(`stereo on: channels=${CHANNELS} bitrate=${BITRATE}`);
-                }
+                connections.set(instance, true);
+                // Enforce stereo signalling + bitrate on EVERY call, even when the encoder already
+                // reports 2 channels (the native patch sets that). Otherwise Discord keeps the Opus
+                // stereo flag at 0 and its default ~64 kbps, so the far end gets narrow, low-bitrate
+                // audio even though 2 channels are captured.
+                encoder.channels = CHANNELS;
+                if (encoder.params == null || typeof encoder.params !== 'object') encoder.params = {};
+                encoder.params.stereo = '1';
+                if (typeof encoder.rate === 'number') encoder.rate = BITRATE;
+                if (encoder.fec === true) encoder.fec = false;
+                options.encodingVoiceBitRate = BITRATE;
+                if (options.fec === true) options.fec = false;
+                say(`stereo enforced: channels=${CHANNELS} stereo=1 bitrate=${BITRATE}${wasMono ? ' (was mono)' : ''}`);
             } else if (connections.get(instance) === true && typeof options.encodingVoiceBitRate === 'number' && options.encodingVoiceBitRate !== BITRATE) {
                 options.encodingVoiceBitRate = BITRATE;
             }
@@ -314,7 +318,18 @@ const discordStereo = (() => {
         static void ApplyJs(Install i, int bitrate, bool quiet)
         {
             string text = File.ReadAllText(i.IndexPath);
-            if (text.Contains(Marker)) { if (!quiet) Console.WriteLine("  " + T("JS: already applied.", "JS: zaten uygulanmış.")); return; }
+            if (text.Contains(Marker))
+            {
+                var vm = Regex.Match(text, @"DISCORD-STEREO-PATCH BEGIN v(\d+)");
+                if (vm.Success && vm.Groups[1].Value == PatchVersion.ToString())
+                { if (!quiet) Console.WriteLine("  " + T("JS: already applied (current version).", "JS: zaten uygulanmış (güncel sürüm).")); return; }
+                // Older hook version on disk: restore the original, then re-apply the new hook.
+                if (!quiet) Console.WriteLine("  " + T("JS: updating hook to the current version.", "JS: kanca güncel sürüme yükseltiliyor."));
+                RestoreJs(i);
+                text = File.ReadAllText(i.IndexPath);
+                if (text.Contains(Marker))
+                { if (!quiet) Console.WriteLine("  " + T("JS: could not restore before update; left as is.", "JS: güncelleme öncesi geri alınamadı; olduğu gibi bırakıldı.")); return; }
+            }
             foreach (var a in new[] { AnchorBind, AnchorConnOptions, AnchorExports })
                 if (CountOccurrences(text, a) != 1)
                     throw new Exception(T("JS: expected line not found (Discord version may differ); nothing written.",
@@ -516,7 +531,9 @@ const discordStereo = (() => {
                 }
                 return best;
             };
-            var parts = new[] { "discord-webrtc_0", "discord-webrtc_1" }
+            // discord-webrtc_* holds the live capture stats; discord-last-webrtc_* holds the
+            // stream setup (ConfigureStream / ApplyConfig). Read all four, freshest last.
+            var parts = new[] { "discord-last-webrtc_0", "discord-last-webrtc_1", "discord-webrtc_0", "discord-webrtc_1" }
                 .Select(n => Path.Combine(logDir, n)).Where(File.Exists)
                 .Select(p => ReadShared(p)).Where(t => t.Length > 0)
                 .OrderBy(newestTs)               // freshest file last => LastOrDefault picks current data
@@ -543,13 +560,15 @@ const discordStereo = (() => {
 
             var cfg = Regex.Matches(text, @"ConfigureStream.*?format:\s*\{name:\s*opus[^}]*num_channels:\s*(\d)[^}]*stereo:\s*(\d)").Cast<Match>().LastOrDefault();
             var cap = Regex.Matches(text, @"captured_audio_processor\.cpp:\d+\).*?channels:\s*(\d)").Cast<Match>().LastOrDefault();
+            var apmF = Regex.Matches(text, @"APM frames processed:\s*(\d+)").Cast<Match>().LastOrDefault();
             string nc = cfg != null ? cfg.Groups[1].Value : "?";
             string st = cfg != null ? cfg.Groups[2].Value : "?";
             string ch = cap != null ? cap.Groups[1].Value : "?";
             bool alive = Process.GetProcessesByName(i.ProcName).Length > 0;
+            string noLog = T("(not in current logs)", "(guncel logda yok)");
 
-            Console.WriteLine("  " + T("Opus channels    : ", "Opus kanal       : ") + nc + (nc == "2" ? "  OK" : ""));
-            Console.WriteLine("  " + T("Opus stereo flag : ", "Opus stereo      : ") + st + (st == "1" ? "  OK" : ""));
+            Console.WriteLine("  " + T("Opus channels    : ", "Opus kanal       : ") + (nc == "?" ? noLog : nc + (nc == "2" ? "  OK" : "")));
+            Console.WriteLine("  " + T("Opus stereo flag : ", "Opus stereo      : ") + (st == "?" ? noLog : st + (st == "1" ? "  OK" : "")));
             Console.WriteLine("  " + T("Captured channels: ", "Yakalanan kanal  : ") + ch + (ch == "2" ? "  OK" : ""));
 
             // Ses isleme durumlari (APM ApplyConfig): muzik icin hepsi kapali (0) olmali.
@@ -571,9 +590,13 @@ const discordStereo = (() => {
                 string ns = g(@"noise_suppression:\s*\{\s*enabled:\s*(\d)");
                 string g1 = g(@"gain_controller1:\s*\{\s*enabled:\s*(\d)");
                 string g2 = g(@"gain_controller2:\s*\{\s*enabled:\s*(\d)");
-                Action<string, string> row = (label, v) => Console.WriteLine("  " + label + v + (v == "0" ? "  OK" : v == "?" ? "" : T("  <- ON (colors music)", "  <- ACIK (muzigi bozar)")));
+                bool apmRunning = apmF != null && apmF.Groups[1].Value != "0";
+                Action<string, string> row = (label, v) => Console.WriteLine("  " + label + v + (v == "0" ? "  OK" : v == "?" ? "" : (apmRunning ? T("  <- ON (colors music)", "  <- ACIK (muzigi renklendirir)") : T("  <- configured, but APM idle", "  <- yapilandirilmis ama APM bosta"))));
                 Console.WriteLine();
-                Console.WriteLine("  " + T("--- Processing (should all be OFF for music) ---", "--- Isleme (muzik icin hepsi KAPALI olmali) ---"));
+                Console.WriteLine("  " + T("--- Capture processing ---", "--- Yakalama islemesi ---"));
+                Console.WriteLine("  " + T("APM running          : ", "APM calisiyor        : ") + (apmF == null ? "?" : apmRunning
+                        ? apmF.Groups[1].Value + T(" frames  <- processing IS active", " kare  <- isleme AKTIF")
+                        : T("no (0 frames) — capture passes through untouched  OK", "hayir (0 kare) — yakalama dokunulmadan geciyor  OK")));
                 Console.WriteLine("  " + T("High-pass (bass cut) : ", "High-pass (bass)     : ") + (hpPatched ? T("off (patched)  OK", "kapali (yamali)  OK") : T("ON  <- re-apply patch", "ACIK  <- yamayi tekrar uygula")));
                 row(T("Echo cancel          : ", "Echo giderme         : "), ec);
                 row(T("Noise suppression    : ", "Gurultu bastirma     : "), ns);
@@ -585,12 +608,13 @@ const discordStereo = (() => {
 
             Console.WriteLine("  " + T("Discord running  : ", "Discord ayakta   : ") + (alive ? T("yes", "evet") : T("no", "hayır")));
             Console.WriteLine();
-            if (st == "1" && ch == "2")
-                Console.WriteLine(T("=> Logs confirm STEREO is being sent.", "=> Loglar STEREO gönderildiğini doğruluyor."));
-            else if (nc == "?" && ch == "?")
-                Console.WriteLine(T("=> Not enough log data. Join voice, wait ~15s, verify again.", "=> Yeterli log yok. Ses kanalına gir, ~15 sn bekle, tekrar doğrula."));
+            if (ch == "2")
+                Console.WriteLine(T("=> Logs confirm STEREO capture (2 channels).", "=> Loglar STEREO yakalamayı (2 kanal) doğruluyor.")
+                                  + (st == "1" ? T("  Opus stereo flag = 1.", "  Opus stereo = 1.") : ""));
+            else if (ch == "?")
+                Console.WriteLine(T("=> Not enough capture data. Join voice, play ~10 s, verify again.", "=> Yeterli yakalama verisi yok. Ses kanalına gir, ~10 sn çal, tekrar doğrula."));
             else
-                Console.WriteLine(T("=> Not stereo yet. If Discord updated, re-apply the patch.", "=> Henüz stereo değil. Discord güncellendiyse yamayı tekrar uygula."));
+                Console.WriteLine(T("=> Capture is not stereo (channels=" + ch + "). If Discord updated, re-apply the patch.", "=> Yakalama stereo değil (kanal=" + ch + "). Discord güncellendiyse yamayı tekrar uygula."));
         }
 
         // ================= Self-test =================

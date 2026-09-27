@@ -6,9 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 ## [Unreleased]
 
 ### Fixed
+- **Stereo flag and bitrate are now enforced on every connection (major).** The hook only upgraded the encoder when it arrived as mono; when Discord already reported 2 channels (the native patch sets that), it left the connection alone — so the Opus `stereo` flag stayed 0 and the bitrate stayed at Discord's ~64 kbps default. Verified in the WebRTC logs: `ConfigureStream ... stereo=0` and `rate=64000`. The hook now forces `channels=2`, `stereo=1` and the chosen bitrate on every `setTransportOptions`, so the connection reliably reports `stereo=1` at the configured bitrate.
 - **`--verify` no longer reports stale readings.** The WebRTC logs persist across sessions, so verify could show channel/processing values from an old voice session as if they were current. It now checks the log's most recent timestamp and, if there was no voice activity in the last 5 minutes, asks you to rejoin voice instead of printing outdated numbers.
 
 ### Changed
+- **`--verify` reads the stream config from `discord-last-webrtc` and reports whether the APM is actually running.** Stream setup (`ConfigureStream` / `ApplyConfig`) is logged to `discord-last-webrtc`, not the live `discord-webrtc`, so verify now reads both; the verdict is based on the fresh captured channel count, and it shows the live `APM frames processed` count so configured-but-idle processing is not mistaken for active processing.
 - Corrected the note about AGC2. Controlled testing does not support the earlier claim that AGC2 was responsible for the altered dynamics on music; on/off made no audible difference, and the received phase problem reproduces independently of it. See the investigation in the issue tracker.
 
 ## [1.2.0]
