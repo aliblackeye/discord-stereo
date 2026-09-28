@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.3.1] - 2026-09-28
+
+### Fixed
+- **The periodic ~once-a-minute dropout on a continuous stream is gone.** Sending audio non-stop (mic never idling), the far end heard the sound cut out and return roughly every 60 seconds. It was not the network — the WebRTC logs show the bandwidth estimate pinned high, RTT low and zero outbound loss throughout. The cause is Discord's UDP socket rebinding to a fresh local port every 60 seconds as a proactive path refresh (`udp_socket.cpp`, "Reconnection started, sending echo"); the brief gap during that rebind only became audible once v1.3.0 turned FEC off on a continuous high-bitrate stream. Continuous audio already keeps the NAT mapping alive, so the rebind is redundant while streaming, and a genuine path failure is still handled by the higher-level RTC reconnect. A native patch raises the socket's reconnect interval from 60 seconds to effectively never for a session (24 h), so the stream is no longer interrupted. It does not touch the audio path, so the v1.3.0 centre fix is unchanged.
+
 ## [1.3.0] - 2026-09-27
 
 ### Fixed

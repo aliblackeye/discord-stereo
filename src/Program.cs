@@ -108,6 +108,21 @@ namespace DiscordStereo
                 Sig = new[]{0x48,0x8B,0x49,0x08,0xBA,0xAC,0x0F,0x00,0x00,0x41,0xB8,0x01},
                 SigOffset = 11, Verify = new byte[]{0x01}, Write = new byte[]{0x00},
             },
+            // Reconnect interval 60s -> 24h (ends the periodic mid-stream dropout). Discord's UDP
+            // socket proactively rebinds to a fresh local port every 60000 ms ("Reconnection
+            // started, sending echo" in udp_socket.cpp) as a path refresh; during that rebind the
+            // outbound audio briefly gaps, which on a continuous high-bitrate music stream with FEC
+            // off is audible at the far end as a ~once-a-minute cut-out-and-return. Continuous audio
+            // RTP already keeps the NAT mapping alive, so the proactive rebind is redundant while
+            // streaming, and a genuine path failure is still handled by the higher-level RTC
+            // reconnect. The socket init writes the interval as an immediate into the instance
+            // (`mov dword [rsi+0x3c8], 0xEA60`); raise it to 0x05265C00 (86400000 ms = 24 h) so it
+            // does not fire mid-session. Unique signature; does not touch the audio/encoder path.
+            new NativePatch {
+                Name = "Reconnect interval 60s->24h (no mid-stream rebind gap)",
+                Sig = new[]{0xC7,0x86,0xC8,0x03,0x00,0x00,0x60,0xEA,0x00,0x00},
+                SigOffset = 6, Verify = new byte[]{0x60,0xEA,0x00,0x00}, Write = new byte[]{0x00,0x5C,0x26,0x05},
+            },
         };
 
         // -------- JS hook (index.js) --------
