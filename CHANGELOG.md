@@ -3,6 +3,14 @@
 All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.3.2] - 2026-09-28
+
+### Added
+- **Pick the bitrate when you install.** The Install step now asks for it up front — presets for 128 kbps (works for phone listeners too), 510 kbps (maximum quality, desktop/web listeners only), or a custom value; Enter keeps the current setting. This matters because a phone (mobile Discord) will not accept a stream far above the voice channel's max bitrate and goes silent, while desktop/web clients take whatever is pushed. So 510 kbps is desktop/web only; for phone listeners keep the bitrate at or under the channel's max (128 kbps on a Level 1 server, up to 384 kbps on Level 3 — Discord's ceiling anywhere is 384 kbps).
+
+### Fixed
+- **Changing the bitrate now actually applies.** Re-installing after a bitrate change was silently skipped whenever the hook was already at the current version, so the new value never took effect (a full restore was needed to force it). The installer now compares the bitrate on disk and rewrites the hook when it differs.
+
 ## [1.3.1] - 2026-09-28
 
 ### Fixed

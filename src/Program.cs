@@ -384,10 +384,17 @@ const discordStereo = (() => {
             if (text.Contains(Marker))
             {
                 var vm = Regex.Match(text, @"DISCORD-STEREO-PATCH BEGIN v(\d+)");
-                if (vm.Success && vm.Groups[1].Value == PatchVersion.ToString())
+                var bm = Regex.Match(text, @"const BITRATE\s*=\s*(\d+)");
+                bool sameVersion = vm.Success && vm.Groups[1].Value == PatchVersion.ToString();
+                bool sameBitrate = bm.Success && bm.Groups[1].Value == bitrate.ToString();
+                if (sameVersion && sameBitrate)
                 { if (!quiet) Console.WriteLine("  " + T("JS: already applied (current version).", "JS: zaten uygulanmış (güncel sürüm).")); return; }
-                // Older hook version on disk: restore the original, then re-apply the new hook.
-                if (!quiet) Console.WriteLine("  " + T("JS: updating hook to the current version.", "JS: kanca güncel sürüme yükseltiliyor."));
+                // Older hook version, or the same version at a different bitrate: restore the
+                // original index.js, then re-apply the hook (this is what makes a bitrate change
+                // from the menu actually take effect instead of being silently skipped).
+                if (!quiet) Console.WriteLine("  " + (sameVersion
+                    ? T("JS: re-applying hook (bitrate changed).", "JS: kanca yeniden uygulanıyor (bitrate değişti).")
+                    : T("JS: updating hook to the current version.", "JS: kanca güncel sürüme yükseltiliyor.")));
                 RestoreJs(i);
                 text = File.ReadAllText(i.IndexPath);
                 if (text.Contains(Marker))
@@ -782,6 +789,32 @@ const discordStereo = (() => {
             Console.WriteLine("==============================================");
         }
 
+        // Ask which bitrate to install with, right before applying. The choice matters because a
+        // phone (mobile Discord) will not accept a stream far above the voice channel's max bitrate
+        // and goes silent, while desktop/web clients take whatever we push. Enter keeps the current
+        // value. Returns bps.
+        static int PromptBitrate(int current)
+        {
+            Console.WriteLine(T("Bitrate - choose by who listens:", "Bitrate - kim dinliyor, ona göre seç:"));
+            Console.WriteLine(T("  1) 128 kbps  - works for phone listeners too (keep at/under the channel's max)",
+                                "  1) 128 kbps  - telefondan dinleyen de varsa (kanal maksını aşma)"));
+            Console.WriteLine(T("  2) 510 kbps  - maximum quality (desktop / web listeners only)",
+                                "  2) 510 kbps  - maksimum kalite (yalnızca masaüstü / web dinleyici)"));
+            Console.WriteLine(T("  3) custom (48-510 kbps)", "  3) özel (48-510 kbps)"));
+            Console.Write(string.Format(T("Choice [Enter = keep {0} kbps]: ", "Seçim [Enter = {0} kbps kalsın]: "), current / 1000));
+            string c = Console.ReadLine();
+            if (c == null) return current; // non-interactive: keep current
+            c = c.Trim();
+            if (c == "1") return 128000;
+            if (c == "2") return 510000;
+            if (c == "3")
+            {
+                Console.Write(T("kbps (48-510): ", "kbps (48-510): "));
+                int kb; if (int.TryParse((Console.ReadLine() ?? "").Trim(), out kb)) return Math.Max(8000, Math.Min(510000, kb * 1000));
+            }
+            return current; // Enter / unrecognized: keep current
+        }
+
         static void Menu(Install i, int bitrate)
         {
             while (true)
@@ -800,7 +833,7 @@ const discordStereo = (() => {
                 string c = Console.ReadLine();
                 if (c == null) return; // stdin kapali / etkilesimsiz: sonsuz donguye girme
                 Console.WriteLine();
-                if (c == "1") DoApply(i, bitrate, true, false);
+                if (c == "1") { bitrate = PromptBitrate(bitrate); SaveSetting("bitrate", bitrate.ToString()); DoApply(i, bitrate, true, false); }
                 else if (c == "2") DoRestore(i, true);
                 else if (c == "3") { if (StartupEnabled()) UninstallStartup(); else InstallStartup(); }
                 else if (c == "4") VerifyFromLogs(i);
