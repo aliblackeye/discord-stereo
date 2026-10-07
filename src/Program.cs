@@ -483,19 +483,38 @@ const discordStereo = (() => {
         const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
         const string RunValue = "DiscordStereo";
 
+        const string SyncTask = "DiscordStereoSync";
+
+        static void RunSchtasks(string args)
+        {
+            try
+            {
+                var psi = new ProcessStartInfo("schtasks", args)
+                { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
+                using (var p = Process.Start(psi)) { p.StandardOutput.ReadToEnd(); p.StandardError.ReadToEnd(); p.WaitForExit(8000); }
+            }
+            catch { }
+        }
+
         static void InstallStartup()
         {
             string exe = Process.GetCurrentProcess().MainModule.FileName;
             using (var k = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(RunKey, true))
                 k.SetValue(RunValue, "\"" + exe + "\" --startup");
-            Console.WriteLine(T("Auto-start ENABLED. Patches will be applied and Discord launched at each login.",
-                                "Otomatik başlatma AÇILDI. Her açılışta yama uygulanıp Discord başlatılacak."));
+            // Keep the patch alive across Discord's own auto-updates (which replace the module and
+            // silently remove the patch): a scheduled task runs --sync every 15 minutes. --sync is a
+            // no-op when already patched and re-applies when an update wiped it, so it is cheap and
+            // non-disruptive. Needs no administrator rights (runs in the user session).
+            RunSchtasks("/Create /TN " + SyncTask + " /TR \"\\\"" + exe + "\\\" --sync\" /SC MINUTE /MO 15 /F");
+            Console.WriteLine(T("Auto-start ENABLED. Discord launches patched at login, and the patch is kept applied across Discord updates (checked every 15 min).",
+                                "Otomatik başlatma AÇILDI. Girişte Discord yamalı açılır; Discord güncellense de yama korunur (15 dakikada bir denetlenir)."));
         }
 
         static void UninstallStartup()
         {
             using (var k = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(RunKey, true))
                 if (k.GetValue(RunValue) != null) k.DeleteValue(RunValue, false);
+            RunSchtasks("/Delete /TN " + SyncTask + " /F");
             Console.WriteLine(T("Auto-start DISABLED.", "Otomatik başlatma KAPANDI."));
         }
 
@@ -572,6 +591,34 @@ const discordStereo = (() => {
             catch (Exception e) { Console.WriteLine(T("ERROR: ", "HATA: ") + e.Message); return false; }
             if (launch) { LaunchDiscord(i); if (!quiet) Console.WriteLine(T("Discord launched. Join a voice channel and play stereo.", "Discord başlatıldı. Ses kanalına gir ve stereo çal.")); }
             return true;
+        }
+
+        static bool IsFullyApplied(Install i)
+        {
+            try
+            {
+                byte[] node = File.ReadAllBytes(i.NodePath);
+                int applied = 0;
+                foreach (var p in NativePatches) { int at; if (ResolveNative(node, p, out at) == SiteState.Patched) applied++; }
+                return applied == NativePatches.Length && IsJsPatched(i);
+            }
+            catch { return false; }
+        }
+
+        // Background keep-alive for the scheduled task (--sync). Silent no-op when already patched;
+        // when a Discord auto-update has replaced the module and wiped the patch, re-apply and
+        // relaunch Discord only if it was running. Never prompts for elevation (a background task
+        // must stay quiet), so if Discord can't be closed it simply retries on the next cycle.
+        static int DoSync(Install i, int bitrate)
+        {
+            if (i == null) return 0;            // no Discord installed -> nothing to do
+            if (IsFullyApplied(i)) return 0;    // already patched -> don't touch Discord at all
+            bool wasRunning = Process.GetProcessesByName(i.ProcName).Length > 0;
+            if (!CloseDiscord(i, true)) return 1; // likely admin Discord; retry next cycle, no UAC
+            try { ApplyNative(i, true); ApplyJs(i, bitrate, true); }
+            catch { return 1; }
+            if (wasRunning) LaunchDiscord(i);
+            return 0;
         }
 
         static void DoRestore(Install i, bool launch)
@@ -883,14 +930,16 @@ const discordStereo = (() => {
             if (set.Contains("--help") || set.Contains("-h"))
             {
                 Banner();
-                Console.WriteLine(T("Usage: DiscordStereo.exe [--apply|--restore|--status|--verify|--install|--uninstall|--startup|--selftest] [--bitrate N] [--lang en|tr] [--no-launch]",
-                                    "Kullanim: DiscordStereo.exe [--apply|--restore|--status|--verify|--install|--uninstall|--startup|--selftest] [--bitrate N] [--lang en|tr] [--no-launch]"));
+                Console.WriteLine(T("Usage: DiscordStereo.exe [--apply|--restore|--status|--verify|--install|--uninstall|--startup|--sync|--selftest] [--bitrate N] [--lang en|tr] [--no-launch]",
+                                    "Kullanim: DiscordStereo.exe [--apply|--restore|--status|--verify|--install|--uninstall|--startup|--sync|--selftest] [--bitrate N] [--lang en|tr] [--no-launch]"));
                 Console.WriteLine(T("Run with no arguments for the menu.", "Argumansiz calistirinca menu acilir."));
                 return 0;
             }
 
             var installs = FindInstalls();
             var i = Pick(installs);
+            // Background keep-alive (scheduled task): quiet, self-contained, never pauses or prompts.
+            if (set.Contains("--sync")) return DoSync(i, bitrate);
             if (i == null && !set.Contains("--uninstall") && !set.Contains("--install"))
             {
                 if (!set.Contains("--startup")) { Console.WriteLine(T("Discord installation not found.", "Discord kurulumu bulunamadi.")); Pause(set); }

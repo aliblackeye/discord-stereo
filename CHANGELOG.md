@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.3.3] - 2026-10-07
+
+### Added
+- **Survives Discord's own updates.** When Discord auto-updates it installs a fresh module and silently drops the patch, so stereo stops until the tool is re-run (this is why it "just stopped working" after a Discord update). Auto-start now also registers a scheduled task that re-checks every 15 minutes and re-applies the patch when an update has wiped it. It is a no-op whenever everything is already in place — it does not touch or restart Discord unless a re-apply is actually needed, and then it only relaunches Discord if it was already running. A new internal `--sync` command performs the check-and-reapply; turning auto-start off removes both the login entry and the scheduled task. No administrator rights required.
+
 ## [1.3.2] - 2026-09-28
 
 ### Added
