@@ -3,6 +3,12 @@
 All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.3.4] - 2026-10-12
+
+### Fixed
+- **No more console window flashing.** The keep-alive scheduled task (and the login entry) launched this console tool directly, so a `cmd` window flashed on screen every 15 minutes ("Discord's cmd popping up and disappearing"). They now run through a windowless launcher — `wscript` plus a tiny hidden-run `.vbs` (window style 0, so the window is never shown, not just hidden after the fact) — so the 15-minute check is completely invisible.
+- **Finds the right Discord during an update.** While Discord updates, two `app-*` folders coexist and the newest can be a partial download — a `modules` folder but no voice module yet. Detection took the newest folder and stopped there, reporting "not found", which also stopped auto-sync from keeping the patch applied right when it mattered. It now falls back to the newest version that actually contains the voice module.
+
 ## [1.3.3] - 2026-10-07
 
 ### Added

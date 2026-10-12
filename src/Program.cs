@@ -241,6 +241,7 @@ const discordStereo = (() => {
                     if (!Directory.Exists(modules)) continue;
                     var voiceDirs = Directory.GetDirectories(modules, "discord_voice-*")
                         .OrderByDescending(d => { int n; return int.TryParse(Path.GetFileName(d).Substring("discord_voice-".Length), out n) ? n : 0; });
+                    bool added = false;
                     foreach (var vd in voiceDirs)
                     {
                         string node = Path.Combine(vd, "discord_voice", "discord_voice.node");
@@ -252,10 +253,15 @@ const discordStereo = (() => {
                                 NodePath = node, IndexPath = index,
                                 UpdateExe = Path.Combine(root, "Update.exe"), ExeName = ch.Exe, ProcName = ch.Proc,
                             });
+                            added = true;
                             break;
                         }
                     }
-                    break;
+                    // Only stop at this app once a usable discord_voice module was actually found.
+                    // During a Discord update two app-* folders coexist and the newest can be a
+                    // partial download: a modules dir but no voice module yet. Fall through to the
+                    // older, complete version instead of reporting "not found".
+                    if (added) break;
                 }
             }
             return result;
@@ -496,18 +502,36 @@ const discordStereo = (() => {
             catch { }
         }
 
+        static string DataDir { get { return Path.Combine(LocalAppData, "DiscordStereo"); } }
+
+        // This is a console .exe, so Task Scheduler / the Run key would flash a console window
+        // every time it fires (every 15 min for the sync task) -- which looks like Discord's cmd
+        // "popping up and disappearing". Launch it through a tiny .vbs via wscript (a windowless
+        // host) that starts the exe with window style 0 (hidden from creation, so there is NO
+        // flash, unlike hiding the window after it is already shown). Returns the .vbs path.
+        static string WriteHiddenLauncher(string name, string exe, string exeArgs)
+        {
+            Directory.CreateDirectory(DataDir);
+            string vbs = Path.Combine(DataDir, name);
+            File.WriteAllText(vbs, "CreateObject(\"WScript.Shell\").Run \"\"\"" + exe + "\"\" " + exeArgs + "\", 0, False\r\n");
+            return vbs;
+        }
+
         static void InstallStartup()
         {
             string exe = Process.GetCurrentProcess().MainModule.FileName;
+            string syncVbs = WriteHiddenLauncher("sync.vbs", exe, "--sync");
+            string startupVbs = WriteHiddenLauncher("startup.vbs", exe, "--startup");
+            // Login: apply + launch Discord, silently (no console window).
             using (var k = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(RunKey, true))
-                k.SetValue(RunValue, "\"" + exe + "\" --startup");
+                k.SetValue(RunValue, "wscript.exe //nologo //B \"" + startupVbs + "\"");
             // Keep the patch alive across Discord's own auto-updates (which replace the module and
-            // silently remove the patch): a scheduled task runs --sync every 15 minutes. --sync is a
-            // no-op when already patched and re-applies when an update wiped it, so it is cheap and
-            // non-disruptive. Needs no administrator rights (runs in the user session).
-            RunSchtasks("/Create /TN " + SyncTask + " /TR \"\\\"" + exe + "\\\" --sync\" /SC MINUTE /MO 15 /F");
-            Console.WriteLine(T("Auto-start ENABLED. Discord launches patched at login, and the patch is kept applied across Discord updates (checked every 15 min).",
-                                "Otomatik başlatma AÇILDI. Girişte Discord yamalı açılır; Discord güncellense de yama korunur (15 dakikada bir denetlenir)."));
+            // silently remove the patch): a scheduled task runs --sync every 15 minutes, windowless.
+            // --sync is a no-op when already patched and re-applies when an update wiped it, so it is
+            // cheap and non-disruptive. Needs no administrator rights (runs in the user session).
+            RunSchtasks("/Create /TN " + SyncTask + " /TR \"wscript.exe //nologo //B \\\"" + syncVbs + "\\\"\" /SC MINUTE /MO 15 /F");
+            Console.WriteLine(T("Auto-start ENABLED (runs silently, no console window). Discord launches patched at login, and the patch is kept applied across Discord updates (checked every 15 min).",
+                                "Otomatik başlatma AÇILDI (penceresiz, sessiz çalışır). Girişte Discord yamalı açılır; Discord güncellense de yama korunur (15 dakikada bir denetlenir)."));
         }
 
         static void UninstallStartup()
@@ -515,6 +539,8 @@ const discordStereo = (() => {
             using (var k = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(RunKey, true))
                 if (k.GetValue(RunValue) != null) k.DeleteValue(RunValue, false);
             RunSchtasks("/Delete /TN " + SyncTask + " /F");
+            try { File.Delete(Path.Combine(DataDir, "sync.vbs")); } catch { }
+            try { File.Delete(Path.Combine(DataDir, "startup.vbs")); } catch { }
             Console.WriteLine(T("Auto-start DISABLED.", "Otomatik başlatma KAPANDI."));
         }
 
