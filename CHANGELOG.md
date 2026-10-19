@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.3.5] - 2026-10-19
+
+### Changed
+- **Dropped the non-functional "Downmix bypass" patch.** Discord 1.0.9262 refactored the code it targeted — a mono-downmix decision (`cmp dword[rsi+0x278], 9`) that only routed level metering, never the encoded stereo samples — so its signature stopped matching and status read 8/9. That patch was never on the actual stereo path (the stereo-channels native patch and the JS hook are what produce stereo), so rather than chase a non-functional patch's moving target on every Discord release, it is removed. Stereo is unaffected and the tool now applies a clean 8/8 on 1.0.9262. The remaining eight signatures have matched unchanged across 1.0.9259–1.0.9262, and partial-apply still keeps stereo working if a future release shifts one of them.
+
 ## [1.3.4] - 2026-10-12
 
 ### Fixed
