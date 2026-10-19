@@ -49,12 +49,32 @@ namespace DiscordStereo
                 Sig = new[]{0xE8,-1,-1,-1,-1,0xBD,-1,0x00,0x00,0x00,0x80,0xBC,0x24,0x80,0x01,0x00,0x00,0x01},
                 SigOffset = 6, Verify = new byte[]{0x01}, Write = new byte[]{0x02},
             },
-            // (Removed in v1.3.5) The old "Downmix bypass" patch neutralized a mono-downmix decision
-            // (cmp dword[rsi+0x278], 9) that only routed level metering, not the encoded samples --
-            // it was never on the stereo audio path (the stereo-channels patch + the JS hook are what
-            // carry the stereo). Discord 1.0.9262 refactored that code region away, so the signature
-            // stopped matching. Rather than chase a non-functional patch's moving target on every
-            // Discord release, it is dropped; nothing in the actual stereo output depends on it.
+            // Downmix bypass (keeps stereo through the capture path). The capture function gates a
+            // mono-downmix with `test al,al; je FALL; cmp dword[rsi+DISP],9; jg STEREO`. Forcing the
+            // STEREO branch always -- NOP the `je` so `al` can't send it to FALL, and turn the `jg`
+            // into an unconditional `jmp` -- keeps the capture stereo. It IS on the audio path:
+            // without it the capture APM runs and collapses L/R to mono (re-confirmed by disassembly
+            // and by --verify showing the APM go idle / "untouched" the moment this is applied; an
+            // earlier note that it "only routed level metering" was wrong).
+            //
+            // Split into two tiny anchors -- the `je` (74 0D) and the `jg` (0F 8F) -- with the struct
+            // field offset DISP between them FULLY WILDCARDED, and each anchor's signature also
+            // wildcarding the other anchor's bytes so both still resolve once applied. This makes the
+            // patch offset-independent: Discord shifting that field (it went 0x278 -> 0x280 in
+            // 1.0.9262, which is exactly what broke the old single-block signature) no longer matters,
+            // because neither the match nor the written bytes depend on DISP. A full re-write of the
+            // function's instructions would still need a one-time update, but a mere offset shift
+            // -- the common case -- is now handled.
+            new NativePatch {
+                Name = "Downmix bypass (skip the mono branch)",
+                Sig = new[]{0x48,0x89,0xF9,0xE8,-1,-1,-1,-1,0x84,0xC0,0x74,0x0D,0x83,0xBE,-1,-1,-1,-1,0x09,-1,-1,-1,-1,-1,-1,0x4C,0x89,0x6C,0x24,0x40,0x44,0x0F,0xB6,0xAC,0x24,-1,-1,0x00,0x00},
+                SigOffset = 10, Verify = new byte[]{0x74,0x0D}, Write = new byte[]{0x90,0x90},
+            },
+            new NativePatch {
+                Name = "Downmix bypass (force the stereo branch)",
+                Sig = new[]{0x48,0x89,0xF9,0xE8,-1,-1,-1,-1,0x84,0xC0,-1,-1,0x83,0xBE,-1,-1,-1,-1,0x09,0x0F,0x8F,-1,-1,-1,-1,0x4C,0x89,0x6C,0x24,0x40,0x44,0x0F,0xB6,0xAC,0x24,-1,-1,0x00,0x00},
+                SigOffset = 19, Verify = new byte[]{0x0F,0x8F}, Write = new byte[]{0x90,0xE9},
+            },
             new NativePatch {
                 Name = "High-pass filter off",
                 Sig = new[]{0x48,0x8B,0x42,-1,0x45,0x84,0xC0,0x74,-1,0x48,0x85,0xC0,0x0F,0x84,-1,-1,-1,-1,0x45,0x31,0xF6,0x48,0x8D,0x5C,0x24,-1},

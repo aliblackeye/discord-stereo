@@ -3,7 +3,10 @@
 All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
-## [1.3.5] - 2026-10-19
+## [1.3.6] - 2026-10-19
+
+### Fixed
+- **Stereo restored on 1.0.9262, and the Downmix bypass is now offset-independent (reverses a wrong call in 1.3.5).** 1.0.9262 shifted a capture-path struct field (`0x278` → `0x280`), which broke the Downmix bypass signature. 1.3.5 had *removed* that patch believing it was non-functional — that was wrong: with it missing, Discord's capture APM runs and collapses the stereo image to mono. Re-confirmed by disassembly and by `--verify` showing the APM drop from running to idle ("capture passes untouched") the instant the patch is applied. The patch is re-added and reworked so it no longer depends on that offset: it is split into two tiny anchors — the `je` and the `jg` of the mono-vs-stereo branch — with the struct offset between them fully wildcarded (and each anchor wildcarding the other's bytes). A future offset shift, the common cause of these breakages, no longer breaks it; only a full instruction re-write of that function would need a one-time update.
 
 ### Changed
 - **Dropped the non-functional "Downmix bypass" patch.** Discord 1.0.9262 refactored the code it targeted — a mono-downmix decision (`cmp dword[rsi+0x278], 9`) that only routed level metering, never the encoded stereo samples — so its signature stopped matching and status read 8/9. That patch was never on the actual stereo path (the stereo-channels native patch and the JS hook are what produce stereo), so rather than chase a non-functional patch's moving target on every Discord release, it is removed. Stereo is unaffected and the tool now applies a clean 8/8 on 1.0.9262. The remaining eight signatures have matched unchanged across 1.0.9259–1.0.9262, and partial-apply still keeps stereo working if a future release shifts one of them.
