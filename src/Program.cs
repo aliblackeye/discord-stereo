@@ -57,22 +57,23 @@ namespace DiscordStereo
             // and by --verify showing the APM go idle / "untouched" the moment this is applied; an
             // earlier note that it "only routed level metering" was wrong).
             //
-            // Split into two tiny anchors -- the `je` (74 0D) and the `jg` (0F 8F) -- with the struct
-            // field offset DISP between them FULLY WILDCARDED, and each anchor's signature also
-            // wildcarding the other anchor's bytes so both still resolve once applied. This makes the
-            // patch offset-independent: Discord shifting that field (it went 0x278 -> 0x280 in
-            // 1.0.9262, which is exactly what broke the old single-block signature) no longer matters,
-            // because neither the match nor the written bytes depend on DISP. A full re-write of the
-            // function's instructions would still need a one-time update, but a mere offset shift
-            // -- the common case -- is now handled.
+            // Split into two tiny anchors -- the `je` (74 0D) and the `jg` (0F 8F) -- and the signature
+            // now wildcards EVERY displacement/relative operand (the call rel, the struct field in
+            // `cmp [rsi+DISP],9`, the jg rel, the `mov [rsp+DISP],r13` stack slot, the `movzx` stack
+            // slot), keeping only the opcodes and the distinctive constant `9`. Each anchor also
+            // wildcards the other anchor's two bytes so both still resolve once applied. This survives
+            // Discord's per-version operand shifts, which is what kept breaking it: the struct field
+            // moved 0x278->0x280 in 1.0.9262, then the stack slot moved 0x40->0x38 in 1.0.9265. The
+            // current signature is verified to match uniquely on BOTH 9262 and 9265. Only a real
+            // instruction-level rewrite of this branch would still need a one-time update.
             new NativePatch {
                 Name = "Downmix bypass (skip the mono branch)",
-                Sig = new[]{0x48,0x89,0xF9,0xE8,-1,-1,-1,-1,0x84,0xC0,0x74,0x0D,0x83,0xBE,-1,-1,-1,-1,0x09,-1,-1,-1,-1,-1,-1,0x4C,0x89,0x6C,0x24,0x40,0x44,0x0F,0xB6,0xAC,0x24,-1,-1,0x00,0x00},
+                Sig = new[]{0x48,0x89,0xF9,0xE8,-1,-1,-1,-1,0x84,0xC0,0x74,0x0D,0x83,0xBE,-1,-1,-1,-1,0x09,-1,-1,-1,-1,-1,-1,0x4C,0x89,0x6C,0x24,-1,0x44,0x0F,0xB6,0xAC,0x24,-1,-1,-1,-1},
                 SigOffset = 10, Verify = new byte[]{0x74,0x0D}, Write = new byte[]{0x90,0x90},
             },
             new NativePatch {
                 Name = "Downmix bypass (force the stereo branch)",
-                Sig = new[]{0x48,0x89,0xF9,0xE8,-1,-1,-1,-1,0x84,0xC0,-1,-1,0x83,0xBE,-1,-1,-1,-1,0x09,0x0F,0x8F,-1,-1,-1,-1,0x4C,0x89,0x6C,0x24,0x40,0x44,0x0F,0xB6,0xAC,0x24,-1,-1,0x00,0x00},
+                Sig = new[]{0x48,0x89,0xF9,0xE8,-1,-1,-1,-1,0x84,0xC0,-1,-1,0x83,0xBE,-1,-1,-1,-1,0x09,0x0F,0x8F,-1,-1,-1,-1,0x4C,0x89,0x6C,0x24,-1,0x44,0x0F,0xB6,0xAC,0x24,-1,-1,-1,-1},
                 SigOffset = 19, Verify = new byte[]{0x0F,0x8F}, Write = new byte[]{0x90,0xE9},
             },
             new NativePatch {

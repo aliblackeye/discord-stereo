@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.3.7] - 2026-10-23
+
+### Fixed
+- **Stereo restored on Discord 1.0.9265.** The update shifted a stack displacement in the downmix-bypass branch (`mov [rsp+0x40],r13` → `mov [rsp+0x38],r13`), which the v1.3.6 signature's fixed `0x40` byte missed, so the Downmix bypass stopped matching (NoSig) and the capture APM collapsed the stereo back to mono. The two Downmix anchors now wildcard **every** displacement/relative operand (the call rel, the `cmp [rsi+DISP],9` struct field, the jg rel, and both stack slots), keeping only the opcodes and the constant `9` — verified to match uniquely on **both 1.0.9262 and 1.0.9265**. The other nine patches matched unchanged across the update. Live-verified after applying: `--verify` reports Opus stereo=1, 2 channels captured, APM idle.
+
 ## [1.3.6] - 2026-10-19
 
 ### Fixed
