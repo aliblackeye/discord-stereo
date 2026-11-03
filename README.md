@@ -122,7 +122,7 @@ Some older stereo tools rely on hardcoded offsets or on shipping large prebuilt 
 
 ## Credits
 
-Inspired by the community's stereo work (edoStereo; DiscordVoicePatcher / Vencord voicePatcher). This is an independent, single-file, version-independent implementation.
+An independent, single-file, version-independent implementation by Ali Karagöz.
 
 ## License
 

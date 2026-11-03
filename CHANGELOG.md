@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.3.8] - 2026-11-03
+
+### Fixed
+- **The 15-minute auto-update check is now silent and reliable.** The keep-alive that re-applies the patch after Discord updates itself runs on a scheduled task every 15 minutes. Two problems had crept in: it could flash a brief console window, and — more importantly — it had stopped running reliably from the Task Scheduler context, so after a Discord update the patch could stay dropped (stereo silently off) until the tool was run by hand. The cause was the windowless launcher added in 1.3.4 (`wscript` plus a hidden `.vbs`), which returned a failure from the scheduled-task context instead of launching the tool. The tool is now built as a GUI-subsystem binary and the scheduled task (and the login entry) run it directly: there is no console window to flash, so the 15-minute check is completely invisible, and it starts the same way the tool runs everywhere else, so it no longer fails from the task context. Interactive use is unchanged — the menu and all command output still appear as before. Re-running *Install* (menu option 3) migrates an existing auto-start to the direct, windowless launch.
+
 ## [1.3.7] - 2026-10-23
 
 ### Fixed

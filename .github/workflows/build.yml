@@ -20,7 +20,7 @@ jobs:
         shell: pwsh
         run: |
           $csc = "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
-          & $csc /nologo /optimize+ /target:exe /platform:x64 /out:DiscordStereo.exe src\Program.cs
+          & $csc /nologo /optimize+ /target:winexe /platform:x64 /out:DiscordStereo.exe src\Program.cs
           if ($LASTEXITCODE -ne 0) { throw "compile failed" }
 
       - name: Sanity check

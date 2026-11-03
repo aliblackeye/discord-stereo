@@ -524,34 +524,27 @@ const discordStereo = (() => {
 
         static string DataDir { get { return Path.Combine(LocalAppData, "DiscordStereo"); } }
 
-        // This is a console .exe, so Task Scheduler / the Run key would flash a console window
-        // every time it fires (every 15 min for the sync task) -- which looks like Discord's cmd
-        // "popping up and disappearing". Launch it through a tiny .vbs via wscript (a windowless
-        // host) that starts the exe with window style 0 (hidden from creation, so there is NO
-        // flash, unlike hiding the window after it is already shown). Returns the .vbs path.
-        static string WriteHiddenLauncher(string name, string exe, string exeArgs)
-        {
-            Directory.CreateDirectory(DataDir);
-            string vbs = Path.Combine(DataDir, name);
-            File.WriteAllText(vbs, "CreateObject(\"WScript.Shell\").Run \"\"\"" + exe + "\"\" " + exeArgs + "\", 0, False\r\n");
-            return vbs;
-        }
-
         static void InstallStartup()
         {
             string exe = Process.GetCurrentProcess().MainModule.FileName;
-            string syncVbs = WriteHiddenLauncher("sync.vbs", exe, "--sync");
-            string startupVbs = WriteHiddenLauncher("startup.vbs", exe, "--startup");
-            // Login: apply + launch Discord, silently (no console window).
+            // Login: apply + launch Discord. Run the exe DIRECTLY -- it is a GUI-subsystem binary, so
+            // --startup/--sync never open a console window at all (see the top of Main): no flashing cmd box.
             using (var k = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(RunKey, true))
-                k.SetValue(RunValue, "wscript.exe //nologo //B \"" + startupVbs + "\"");
+                k.SetValue(RunValue, "\"" + exe + "\" --startup");
             // Keep the patch alive across Discord's own auto-updates (which replace the module and
-            // silently remove the patch): a scheduled task runs --sync every 15 minutes, windowless.
-            // --sync is a no-op when already patched and re-applies when an update wiped it, so it is
-            // cheap and non-disruptive. Needs no administrator rights (runs in the user session).
-            RunSchtasks("/Create /TN " + SyncTask + " /TR \"wscript.exe //nologo //B \\\"" + syncVbs + "\\\"\" /SC MINUTE /MO 15 /F");
-            Console.WriteLine(T("Auto-start ENABLED (runs silently, no console window). Discord launches patched at login, and the patch is kept applied across Discord updates (checked every 15 min).",
-                                "Otomatik başlatma AÇILDI (penceresiz, sessiz çalışır). Girişte Discord yamalı açılır; Discord güncellense de yama korunur (15 dakikada bir denetlenir)."));
+            // silently drop the patch): a scheduled task runs --sync every 15 minutes. Earlier builds
+            // launched this through a wscript + hidden-.vbs shim to avoid a console flash -- but that
+            // shim does NOT actually execute from the Task Scheduler context (the task reports success
+            // yet the tool never runs, so the auto-reapply silently did nothing for days). Running the
+            // exe directly is reliable from the task (verified), and because the exe is a GUI-subsystem
+            // binary it opens no console for --sync, so it stays silent. --sync is a no-op when patched,
+            // re-applies when wiped. No admin.
+            RunSchtasks("/Create /TN " + SyncTask + " /TR \"\\\"" + exe + "\\\" --sync\" /SC MINUTE /MO 15 /F");
+            // Clean up the old, non-working wscript shim if upgrading from such a build.
+            try { File.Delete(Path.Combine(DataDir, "sync.vbs")); } catch { }
+            try { File.Delete(Path.Combine(DataDir, "startup.vbs")); } catch { }
+            Console.WriteLine(T("Auto-start ENABLED (silent; runs the sync directly). Discord launches patched at login, and the patch is kept applied across Discord updates (checked every 15 min).",
+                                "Otomatik başlatma AÇILDI (sessiz; sync'i doğrudan çalıştırır). Girişte Discord yamalı açılır; Discord güncellense de yama korunur (15 dakikada bir denetlenir)."));
         }
 
         static void UninstallStartup()
@@ -946,8 +939,35 @@ const discordStereo = (() => {
             }
         }
 
+        [System.Runtime.InteropServices.DllImport("kernel32.dll")] static extern bool AttachConsole(int dwProcessId);
+        [System.Runtime.InteropServices.DllImport("kernel32.dll")] static extern bool AllocConsole();
+        [System.Runtime.InteropServices.DllImport("kernel32.dll")] static extern IntPtr GetStdHandle(int nStdHandle);
+
         static int Main(string[] args)
         {
+            // This is a GUI-subsystem (winexe) binary, so it never opens a console window on its own.
+            // The background modes (--sync every 15 min, --startup at login) are launched by the
+            // scheduled task / Run key and run completely invisibly: no window, no flash, and nothing
+            // that hides an existing window (which is exactly what antivirus heuristics flag). Interactive
+            // use still needs a console: when the exe is double-clicked from Explorer there is no stdout,
+            // so attach to the parent console if there is one, otherwise allocate a fresh console for the
+            // menu. When stdout is already redirected (a pipe or a file) it is left untouched so captured
+            // output keeps working.
+            bool silent = args.Any(a => { var la = a.ToLowerInvariant(); return la == "--sync" || la == "--startup"; });
+            if (!silent)
+            {
+                try
+                {
+                    IntPtr hOut = GetStdHandle(-11); // STD_OUTPUT_HANDLE
+                    if (hOut == IntPtr.Zero || hOut == new IntPtr(-1))
+                    {
+                        if (!AttachConsole(-1)) AllocConsole(); // ATTACH_PARENT_PROCESS, else a new console
+                        Console.SetOut(new StreamWriter(Console.OpenStandardOutput()) { AutoFlush = true });
+                        Console.SetIn(new StreamReader(Console.OpenStandardInput()));
+                    }
+                }
+                catch { }
+            }
             try { Console.OutputEncoding = Encoding.UTF8; } catch { }
             var set = new HashSet<string>(args.Select(a => a.ToLowerInvariant()));
             ElevatedRetry = set.Contains("--elevated");

@@ -122,7 +122,7 @@ Bazı eski stereo araçları sabit offset'e ya da sürüm-başına büyük hazı
 
 ## Teşekkür
 
-Topluluğun stereo çalışmalarından esinlenilmiştir (edoStereo; DiscordVoicePatcher / Vencord voicePatcher). Bu proje bağımsız, tek dosyalık, sürümden bağımsız bir uygulamadır.
+Bağımsız, tek dosyalık, sürümden bağımsız bir uygulama. — Ali Karagöz
 
 ## Lisans
 
