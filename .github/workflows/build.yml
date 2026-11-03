@@ -26,9 +26,10 @@ jobs:
       - name: Sanity check
         shell: pwsh
         run: |
-          .\DiscordStereo.exe --help --lang en
+          # winexe (GUI subsystem) does not block pwsh, so pipe each run to force a wait.
+          .\DiscordStereo.exe --help --lang en | Out-Host
           # Gomulu JS kancasi gecerli JavaScript mi?
-          .\DiscordStereo.exe --dump-js --bitrate 510000 > hook.js
+          .\DiscordStereo.exe --dump-js --bitrate 510000 | Out-File -Encoding utf8 hook.js
           node --check hook.js
           Remove-Item hook.js
 
