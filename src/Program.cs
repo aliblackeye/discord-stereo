@@ -25,7 +25,7 @@ namespace DiscordStereo
     internal static class Program
     {
         const int PatchVersion = 2;
-        const int DefaultBitrate = 510000; // highest bitrate the Opus audio codec supports (best quality)
+        const int DefaultBitrate = 256000; // safe high-quality fallback. Discord's channel bitrate cap is <=384k (64/128/256/384 by boost tier), so the old 510k default over-pushed every real channel -> mobile muted, desktop cut on loud transients. A higher value can still be set explicitly.
         const string Marker = "DISCORD-STEREO-PATCH";
 
         enum Lang { En, Tr }
@@ -404,6 +404,13 @@ const discordStereo = (() => {
 
         static bool IsJsPatched(Install i) { return File.ReadAllText(i.IndexPath).Contains(Marker); }
 
+        // Bitrate baked into the installed JS hook (const BITRATE = N), or -1 if no hook / unreadable.
+        static int JsBitrate(Install i)
+        {
+            try { var m = Regex.Match(File.ReadAllText(i.IndexPath), @"const BITRATE\s*=\s*(\d+)"); return m.Success ? int.Parse(m.Groups[1].Value) : -1; }
+            catch { return -1; }
+        }
+
         static void ApplyJs(Install i, int bitrate, bool quiet)
         {
             string text = File.ReadAllText(i.IndexPath);
@@ -651,7 +658,11 @@ const discordStereo = (() => {
         static int DoSync(Install i, int bitrate)
         {
             if (i == null) return 0;            // no Discord installed -> nothing to do
-            if (IsFullyApplied(i)) return 0;    // already patched -> don't touch Discord at all
+            // Already patched AND at the right bitrate -> nothing to do. The bitrate check matters: a
+            // Discord update replaces the module, and if a re-apply ever lands on the wrong value (the
+            // default), presence alone would look "fully applied" and the wrong bitrate would stick
+            // forever. Re-checking it makes the keep-alive self-heal a drifted bitrate on the next cycle.
+            if (IsFullyApplied(i) && JsBitrate(i) == bitrate) return 0;
             bool wasRunning = Process.GetProcessesByName(i.ProcName).Length > 0;
             if (!CloseDiscord(i, true)) return 1; // likely admin Discord; retry next cycle, no UAC
             try { ApplyNative(i, true); ApplyJs(i, bitrate, true); }

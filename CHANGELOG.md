@@ -3,6 +3,14 @@
 All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.3.9] - 2026-11-14
+
+### Fixed
+- **The chosen bitrate now survives Discord's own updates instead of silently reverting.** After a Discord auto-update, the 15-minute keep-alive re-applies the patch to the fresh module — but it only checked whether the hook was *present*, not whether it carried the bitrate you had set. So if a background re-apply ever wrote the default bitrate, the wrong value stuck permanently: every later check saw a hook and declared everything applied, so it was never corrected. On a channel whose bitrate cap is below that default, bass-heavy / loud-transient audio then overflowed the cap and cut out for the listener. The keep-alive now also compares the hook's bitrate against your saved setting and re-applies when they differ, so a drifted bitrate self-heals on the next cycle.
+
+### Changed
+- **Default bitrate lowered from 510 kbps to 256 kbps.** Discord's channel bitrate cap is at most 384 kbps (64 / 128 / 256 / 384 by boost tier), so a 510 kbps default always over-pushed every real channel — mobile receivers mute, and desktop receivers cut out on loud passages. 256 kbps is a safe, high-quality default that fits a Level 2+ channel; pick a specific value in the installer or with `--bitrate` if your channel's cap differs. A bitrate you have chosen explicitly is unchanged.
+
 ## [1.3.8] - 2026-11-03
 
 ### Fixed
